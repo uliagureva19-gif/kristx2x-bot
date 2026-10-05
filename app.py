@@ -84,9 +84,17 @@ def webhook():
             return "OK", 200
 
         if data.startswith("reply:"):
-            user_id = int(data.split(":")[1])
+    parts = data.split(":")
+    user_id = int(parts[1])
 
-            reply_to_user[ADMIN_ID] = user_id
+    reply_to_user[ADMIN_ID] = user_id
+
+    # Запоминаем, на какое конкретно сообщение нажали "Ответить"
+    if len(parts) >= 3:
+        original_message_id = int(parts[2])
+
+        if user_id in original_messages:
+            original_messages[user_id]["message_id"] = original_message_id
 
             # Удаляем старую подсказку, если она осталась
             old_prompt_id = reply_prompt_message.pop(
@@ -208,16 +216,27 @@ def webhook():
                 ADMIN_ID
             )
 
-            # Копируем ответ пользователю
-            requests.post(
-                f"{TG_API}/copyMessage",
-                json={
-                    "chat_id": target_user,
-                    "from_chat_id": chat_id,
-                    "message_id": message["message_id"],
-                },
-                timeout=15,
-            )
+           # Копируем ответ пользователю
+copy_data = {
+    "chat_id": target_user,
+    "from_chat_id": chat_id,
+    "message_id": message["message_id"],
+}
+
+# Если помним исходное сообщение пользователя —
+# показываем ответ как reply на него
+original = original_messages.get(target_user)
+
+if original:
+    copy_data["reply_parameters"] = {
+        "message_id": original["message_id"]
+    }
+
+requests.post(
+    f"{TG_API}/copyMessage",
+    json=copy_data,
+    timeout=15,
+)
 
             # Удаляем подсказку
             prompt_id = reply_prompt_message.pop(
@@ -284,7 +303,7 @@ def webhook():
             [
                 {
                     "text": "↩️ Ответить",
-                    "callback_data": f"reply:{user_id}"
+                    "callback_data": f"reply:{user_id}:{message['message_id']}"
                 }
             ]
         ]
@@ -297,16 +316,26 @@ def webhook():
         reply_markup=keyboard
     )
 
-    # Копируем само сообщение администратору
-    requests.post(
-        f"{TG_API}/copyMessage",
-        json={
-            "chat_id": ADMIN_ID,
-            "from_chat_id": chat_id,
-            "message_id": message["message_id"],
-        },
-        timeout=15,
-    )
+# Копируем само сообщение администратору
+copied = requests.post(
+    f"{TG_API}/copyMessage",
+    json={
+        "chat_id": ADMIN_ID,
+        "from_chat_id": chat_id,
+        "message_id": message["message_id"],
+    },
+    timeout=15,
+).json()
+
+# Запоминаем исходное сообщение пользователя
+if copied.get("ok"):
+    admin_message_id = copied["result"]["message_id"]
+
+    original_messages[user_id] = {
+        "chat_id": chat_id,
+        "message_id": message["message_id"],
+        "admin_message_id": admin_message_id,
+    }
 
     # Временное подтверждение отправителю
     result = send_message(
