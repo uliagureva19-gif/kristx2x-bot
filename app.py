@@ -15,7 +15,9 @@ reply_to_user = {}
 
 # ID сообщения "✍️ Напиши ответ следующим сообщением."
 reply_prompt_message = {}
-
+# Здесь храним исходное сообщение пользователя,
+# чтобы показать его при ответе администратора
+original_messages = {}
 
 def send_message(chat_id, text, reply_markup=None):
     data = {
