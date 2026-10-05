@@ -73,9 +73,9 @@ def webhook():
     # НАЖАТИЕ КНОПКИ "ОТВЕТИТЬ"
     # ==========================================
 
-    callback = update.get("callback_query")
+   callback = update.get("callback_query")
 
-    if callback:
+if callback:
     admin = callback.get("from", {})
     data = callback.get("data", "")
 
@@ -89,35 +89,37 @@ def webhook():
 
         reply_to_user[ADMIN_ID] = user_id
 
-    # Запоминаем, на какое конкретно сообщение нажали "Ответить"
-    if len(parts) >= 3:
-        original_message_id = int(parts[2])
+        # Запоминаем конкретное сообщение,
+        # на которое администратор хочет ответить
+        if len(parts) >= 3:
+            original_message_id = int(parts[2])
 
-        if user_id in original_messages:
-            original_messages[user_id]["message_id"] = original_message_id
+            if user_id in original_messages:
+                original_messages[user_id]["message_id"] = original_message_id
 
-    # Удаляем старую подсказку, если она осталась
-    old_prompt_id = reply_prompt_message.pop(
-        ADMIN_ID,
-        None
-    )
-
-    if old_prompt_id:
-        delete_message(
+        # Удаляем старую подсказку, если она осталась
+        old_prompt_id = reply_prompt_message.pop(
             ADMIN_ID,
-            old_prompt_id
+            None
         )
 
-    result = send_message(
-        ADMIN_ID,
-        "✍️ Напиши ответ следующим сообщением."
-    )
+        if old_prompt_id:
+            delete_message(
+                ADMIN_ID,
+                old_prompt_id
+            )
 
-    if result.get("ok"):
-        reply_prompt_message[ADMIN_ID] = (
-            result["result"]["message_id"]
+        result = send_message(
+            ADMIN_ID,
+            "✍️ Напиши ответ следующим сообщением."
         )
 
+        if result.get("ok"):
+            reply_prompt_message[ADMIN_ID] = (
+                result["result"]["message_id"]
+            )
+
+    # Убираем индикатор загрузки на кнопке
     requests.post(
         f"{TG_API}/answerCallbackQuery",
         json={
@@ -128,47 +130,9 @@ def webhook():
 
     return "OK", 200
 
-    reply_to_user[ADMIN_ID] = user_id
-
-    # Запоминаем, на какое конкретно сообщение нажали "Ответить"
-    if len(parts) >= 3:
-        original_message_id = int(parts[2])
-
-        if user_id in original_messages:
-            original_messages[user_id]["message_id"] = original_message_id
-
-            # Удаляем старую подсказку, если она осталась
-            old_prompt_id = reply_prompt_message.pop(
-                ADMIN_ID,
-                None
-            )
-
-            if old_prompt_id:
-                delete_message(
-                    ADMIN_ID,
-                    old_prompt_id
-                )
-
-            result = send_message(
-                ADMIN_ID,
-                "✍️ Напиши ответ следующим сообщением."
-            )
-
-            if result.get("ok"):
-                reply_prompt_message[ADMIN_ID] = (
-                    result["result"]["message_id"]
-                )
-
-        # Убираем загрузку с кнопки Telegram
-        requests.post(
-            f"{TG_API}/answerCallbackQuery",
-            json={
-                "callback_query_id": callback["id"]
-            },
-            timeout=15,
-        )
-
-        return "OK", 200
+# ==========================================
+# ОБЫЧНОЕ СООБЩЕНИЕ
+# ==========================================
 
     # ==========================================
     # ОБЫЧНОЕ СООБЩЕНИЕ
