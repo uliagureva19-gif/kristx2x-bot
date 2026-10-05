@@ -83,9 +83,50 @@ def webhook():
         if admin.get("id") != ADMIN_ID:
             return "OK", 200
 
-        if data.startswith("reply:"):
+       if data.startswith("reply:"):
     parts = data.split(":")
     user_id = int(parts[1])
+
+    reply_to_user[ADMIN_ID] = user_id
+
+    # Запоминаем, на какое конкретно сообщение нажали "Ответить"
+    if len(parts) >= 3:
+        original_message_id = int(parts[2])
+
+        if user_id in original_messages:
+            original_messages[user_id]["message_id"] = original_message_id
+
+    # Удаляем старую подсказку, если она осталась
+    old_prompt_id = reply_prompt_message.pop(
+        ADMIN_ID,
+        None
+    )
+
+    if old_prompt_id:
+        delete_message(
+            ADMIN_ID,
+            old_prompt_id
+        )
+
+    result = send_message(
+        ADMIN_ID,
+        "✍️ Напиши ответ следующим сообщением."
+    )
+
+    if result.get("ok"):
+        reply_prompt_message[ADMIN_ID] = (
+            result["result"]["message_id"]
+        )
+
+    requests.post(
+        f"{TG_API}/answerCallbackQuery",
+        json={
+            "callback_query_id": callback["id"]
+        },
+        timeout=15,
+    )
+
+    return "OK", 200
 
     reply_to_user[ADMIN_ID] = user_id
 
