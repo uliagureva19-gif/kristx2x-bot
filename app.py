@@ -10,11 +10,10 @@ ADMIN_ID = 5604526307
 
 TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-# Здесь временно храним, кому администратор хочет ответить
+# Кому администратор собирается ответить
 reply_to_user = {}
 
-# Здесь храним ID сообщения:
-# "✍️ Напиши ответ следующим сообщением."
+# ID сообщения "✍️ Напиши ответ следующим сообщением."
 reply_prompt_message = {}
 
 
@@ -68,9 +67,9 @@ def home():
 def webhook():
     update = request.get_json(silent=True) or {}
 
-    # =========================
+    # ==========================================
     # НАЖАТИЕ КНОПКИ "ОТВЕТИТЬ"
-    # =========================
+    # ==========================================
 
     callback = update.get("callback_query")
 
@@ -78,7 +77,7 @@ def webhook():
         admin = callback.get("from", {})
         data = callback.get("data", "")
 
-        # Кнопка работает только для администратора
+        # Кнопка работает только у администратора
         if admin.get("id") != ADMIN_ID:
             return "OK", 200
 
@@ -87,22 +86,29 @@ def webhook():
 
             reply_to_user[ADMIN_ID] = user_id
 
-            # Если старое сообщение "Напиши ответ" осталось —
-            # удаляем его перед созданием нового
-            old_prompt_id = reply_prompt_message.pop(ADMIN_ID, None)
+            # Удаляем старую подсказку, если она осталась
+            old_prompt_id = reply_prompt_message.pop(
+                ADMIN_ID,
+                None
+            )
 
             if old_prompt_id:
-                delete_message(ADMIN_ID, old_prompt_id)
+                delete_message(
+                    ADMIN_ID,
+                    old_prompt_id
+                )
 
             result = send_message(
                 ADMIN_ID,
                 "✍️ Напиши ответ следующим сообщением."
             )
 
-            # Запоминаем ID этого служебного сообщения
             if result.get("ok"):
-                reply_prompt_message[ADMIN_ID] = result["result"]["message_id"]
+                reply_prompt_message[ADMIN_ID] = (
+                    result["result"]["message_id"]
+                )
 
+        # Убираем загрузку с кнопки Telegram
         requests.post(
             f"{TG_API}/answerCallbackQuery",
             json={
@@ -113,9 +119,9 @@ def webhook():
 
         return "OK", 200
 
-    # =========================
+    # ==========================================
     # ОБЫЧНОЕ СООБЩЕНИЕ
-    # =========================
+    # ==========================================
 
     message = update.get("message")
 
@@ -128,17 +134,79 @@ def webhook():
     if not chat_id:
         return "OK", 200
 
-    # =========================
+    text = message.get("text", "")
+
+    # ==========================================
+    # /START
+    # ==========================================
+
+    if text.startswith("/start"):
+
+        send_message(
+            chat_id,
+            "🖤 Анонимные сообщения\n\n"
+            "Здесь ты можешь отправить мне сообщение "
+            "полностью анонимно.\n\n"
+            "Просто напиши текст или отправь фото, "
+            "видео, голосовое сообщение — "
+            "я получу его и смогу ответить тебе через бота.\n\n"
+            "🔒 Твоё сообщение будет доставлено."
+        )
+
+        return "OK", 200
+
+    # ==========================================
+    # /CANCEL ДЛЯ АДМИНИСТРАТОРА
+    # ==========================================
+
+    if (
+        user.get("id") == ADMIN_ID
+        and text.startswith("/cancel")
+    ):
+
+        reply_to_user.pop(
+            ADMIN_ID,
+            None
+        )
+
+        prompt_id = reply_prompt_message.pop(
+            ADMIN_ID,
+            None
+        )
+
+        if prompt_id:
+            delete_message(
+                ADMIN_ID,
+                prompt_id
+            )
+
+        result = send_message(
+            ADMIN_ID,
+            "❌ Ответ отменён."
+        )
+
+        if result.get("ok"):
+            delete_later(
+                ADMIN_ID,
+                result["result"]["message_id"],
+                3
+            )
+
+        return "OK", 200
+
+    # ==========================================
     # ОТВЕТ АДМИНИСТРАТОРА
-    # =========================
+    # ==========================================
 
     if user.get("id") == ADMIN_ID:
 
         if ADMIN_ID in reply_to_user:
 
-            target_user = reply_to_user.pop(ADMIN_ID)
+            target_user = reply_to_user.pop(
+                ADMIN_ID
+            )
 
-            # Отправляем ответ пользователю
+            # Копируем ответ пользователю
             requests.post(
                 f"{TG_API}/copyMessage",
                 json={
@@ -149,8 +217,11 @@ def webhook():
                 timeout=15,
             )
 
-            # Удаляем "✍️ Напиши ответ следующим сообщением."
-            prompt_id = reply_prompt_message.pop(ADMIN_ID, None)
+            # Удаляем подсказку
+            prompt_id = reply_prompt_message.pop(
+                ADMIN_ID,
+                None
+            )
 
             if prompt_id:
                 delete_message(
@@ -158,13 +229,12 @@ def webhook():
                     prompt_id
                 )
 
-            # Показываем "Ответ отправлен"
+            # Подтверждаем отправку
             result = send_message(
                 ADMIN_ID,
                 "✅ Ответ отправлен."
             )
 
-            # И удаляем его через 3 секунды
             if result.get("ok"):
                 delete_later(
                     ADMIN_ID,
@@ -174,17 +244,31 @@ def webhook():
 
         return "OK", 200
 
-    # =========================
+    # ==========================================
     # АНОНИМНОЕ СООБЩЕНИЕ
-    # =========================
+    # ==========================================
 
     user_id = user.get("id")
     username = user.get("username")
-    first_name = user.get("first_name", "")
-    last_name = user.get("last_name", "")
+    first_name = user.get(
+        "first_name",
+        ""
+    )
+    last_name = user.get(
+        "last_name",
+        ""
+    )
 
-    username_text = f"@{username}" if username else "не установлен"
-    full_name = f"{first_name} {last_name}".strip() or "не указано"
+    username_text = (
+        f"@{username}"
+        if username
+        else "не установлен"
+    )
+
+    full_name = (
+        f"{first_name} {last_name}".strip()
+        or "не указано"
+    )
 
     info = (
         "🔐 Новое сообщение\n\n"
@@ -204,6 +288,7 @@ def webhook():
         ]
     }
 
+    # Информация об отправителе только администратору
     send_message(
         ADMIN_ID,
         info,
@@ -221,7 +306,7 @@ def webhook():
         timeout=15,
     )
 
-    # Подтверждение отправителю
+    # Временное подтверждение отправителю
     result = send_message(
         chat_id,
         "✅ Сообщение отправлено анонимно."
