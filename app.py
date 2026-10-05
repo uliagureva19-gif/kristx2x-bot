@@ -76,18 +76,18 @@ def webhook():
     callback = update.get("callback_query")
 
     if callback:
-        admin = callback.get("from", {})
-        data = callback.get("data", "")
+    admin = callback.get("from", {})
+    data = callback.get("data", "")
 
-        # Кнопка работает только у администратора
-        if admin.get("id") != ADMIN_ID:
-            return "OK", 200
+    # Кнопка работает только у администратора
+    if admin.get("id") != ADMIN_ID:
+        return "OK", 200
 
-       if data.startswith("reply:"):
-    parts = data.split(":")
-    user_id = int(parts[1])
+    if data.startswith("reply:"):
+        parts = data.split(":")
+        user_id = int(parts[1])
 
-    reply_to_user[ADMIN_ID] = user_id
+        reply_to_user[ADMIN_ID] = user_id
 
     # Запоминаем, на какое конкретно сообщение нажали "Ответить"
     if len(parts) >= 3:
