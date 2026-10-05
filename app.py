@@ -1,4 +1,5 @@
 import os
+import threading
 from flask import Flask, request
 import requests
 
@@ -11,6 +12,10 @@ TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # Здесь временно храним, кому администратор хочет ответить
 reply_to_user = {}
+
+# Здесь храним ID сообщения:
+# "✍️ Напиши ответ следующим сообщением."
+reply_prompt_message = {}
 
 
 def send_message(chat_id, text, reply_markup=None):
@@ -28,6 +33,30 @@ def send_message(chat_id, text, reply_markup=None):
         json=data,
         timeout=15,
     ).json()
+
+
+def delete_message(chat_id, message_id):
+    try:
+        requests.post(
+            f"{TG_API}/deleteMessage",
+            json={
+                "chat_id": chat_id,
+                "message_id": message_id,
+            },
+            timeout=15,
+        )
+    except Exception:
+        pass
+
+
+def delete_later(chat_id, message_id, seconds=3):
+    timer = threading.Timer(
+        seconds,
+        delete_message,
+        args=(chat_id, message_id)
+    )
+    timer.daemon = True
+    timer.start()
 
 
 @app.get("/")
@@ -58,10 +87,21 @@ def webhook():
 
             reply_to_user[ADMIN_ID] = user_id
 
-            send_message(
+            # Если старое сообщение "Напиши ответ" осталось —
+            # удаляем его перед созданием нового
+            old_prompt_id = reply_prompt_message.pop(ADMIN_ID, None)
+
+            if old_prompt_id:
+                delete_message(ADMIN_ID, old_prompt_id)
+
+            result = send_message(
                 ADMIN_ID,
                 "✍️ Напиши ответ следующим сообщением."
             )
+
+            # Запоминаем ID этого служебного сообщения
+            if result.get("ok"):
+                reply_prompt_message[ADMIN_ID] = result["result"]["message_id"]
 
         requests.post(
             f"{TG_API}/answerCallbackQuery",
@@ -98,6 +138,7 @@ def webhook():
 
             target_user = reply_to_user.pop(ADMIN_ID)
 
+            # Отправляем ответ пользователю
             requests.post(
                 f"{TG_API}/copyMessage",
                 json={
@@ -108,10 +149,28 @@ def webhook():
                 timeout=15,
             )
 
-            send_message(
+            # Удаляем "✍️ Напиши ответ следующим сообщением."
+            prompt_id = reply_prompt_message.pop(ADMIN_ID, None)
+
+            if prompt_id:
+                delete_message(
+                    ADMIN_ID,
+                    prompt_id
+                )
+
+            # Показываем "Ответ отправлен"
+            result = send_message(
                 ADMIN_ID,
                 "✅ Ответ отправлен."
             )
+
+            # И удаляем его через 3 секунды
+            if result.get("ok"):
+                delete_later(
+                    ADMIN_ID,
+                    result["result"]["message_id"],
+                    3
+                )
 
         return "OK", 200
 
@@ -163,9 +222,17 @@ def webhook():
     )
 
     # Подтверждение отправителю
-    send_message(
+    result = send_message(
         chat_id,
         "✅ Сообщение отправлено анонимно."
     )
+
+    # Удаляем подтверждение через 3 секунды
+    if result.get("ok"):
+        delete_later(
+            chat_id,
+            result["result"]["message_id"],
+            3
+        )
 
     return "OK", 200
